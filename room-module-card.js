@@ -1,6 +1,6 @@
 /* ============================================================
    room-module-card.js
-   Version: 1.0.0
+   Version: 1.1.0
 
    A modular room dashboard card, built Bubble-Card-style: one
    lightweight container ("room-module-card") plus a palette of
@@ -56,8 +56,8 @@
    single "All Lights" master control.
 ============================================================ */
 
-const BLOCK_LABELS = { climate: 'Climate', light: 'Lights', fan: 'Fan', media: 'Media', tank: 'Fish Tank' };
-const BLOCK_TYPES = ['climate', 'light', 'fan', 'media', 'tank'];
+const BLOCK_LABELS = { climate: 'Climate', light: 'Lights', fan: 'Fan', media: 'Media', tank: 'Fish Tank', custom_card: 'Custom Card' };
+const BLOCK_TYPES = ['climate', 'light', 'fan', 'media', 'tank', 'custom_card'];
 
 function defaultBlock(type) {
   switch (type) {
@@ -66,6 +66,7 @@ function defaultBlock(type) {
     case 'fan': return { type: 'fan', entity: '' };
     case 'media': return { type: 'media', sources: [{ entity: '', name: 'New Source' }] };
     case 'tank': return { type: 'tank', label: '', temperature_entity: '', variant: 'axolotl' };
+    case 'custom_card': return { type: 'custom_card', card_config: { type: 'custom:mediocre-media-player-card', entity: '' } };
     default: return { type };
   }
 }
@@ -212,7 +213,49 @@ class RoomModuleCard extends HTMLElement {
       case 'fan': return this._buildFan(block, idx);
       case 'media': return this._buildMedia(block, idx);
       case 'tank': return this._buildTank(block, idx);
+      case 'custom_card': return this._buildCustomCard(block, idx);
       default: return null;
+    }
+  }
+
+  // ---------- Custom Card (embed any other Lovelace card, e.g. Mediocre Media Player Card) ----------
+  _buildCustomCard(block, idx) {
+    const wrap = document.createElement('div');
+    wrap.className = 'custom-card-wrap';
+    wrap.id = `customCardWrap-${idx}`;
+    if (!this._nestedCards) this._nestedCards = {};
+
+    if (!block.card_config || !block.card_config.type) {
+      wrap.innerHTML = `<div class="custom-card-empty">Custom card not configured yet — set it up in the editor.</div>`;
+      return wrap;
+    }
+
+    this._mountCustomCard(wrap, block, idx);
+    return wrap;
+  }
+
+  async _mountCustomCard(wrap, block, idx) {
+    try {
+      if (!this._cardHelpers) {
+        if (typeof window.loadCardHelpers === 'function') {
+          this._cardHelpers = await window.loadCardHelpers();
+        }
+      }
+      let cardEl;
+      if (this._cardHelpers) {
+        cardEl = this._cardHelpers.createCardElement(block.card_config);
+      } else {
+        // Fallback: instantiate directly by tag name if card helpers aren't available
+        const tag = block.card_config.type.replace(/^custom:/, '');
+        cardEl = document.createElement(tag);
+        if (cardEl.setConfig) cardEl.setConfig(block.card_config);
+      }
+      cardEl.hass = this._hass;
+      this._nestedCards[idx] = cardEl;
+      wrap.innerHTML = '';
+      wrap.appendChild(cardEl);
+    } catch (err) {
+      wrap.innerHTML = `<div class="custom-card-empty">Couldn't load card: ${escapeHtml(block.card_config.type)}. Check it's installed as a resource.</div>`;
     }
   }
 
@@ -612,6 +655,7 @@ class RoomModuleCard extends HTMLElement {
       else if (block.type === 'fan') this._updateFan(block, idx);
       else if (block.type === 'media') this._updateMedia(block, idx);
       else if (block.type === 'tank') this._updateTank(block, idx);
+      else if (block.type === 'custom_card') this._updateCustomCard(block, idx);
     });
 
     // All-lights master row (aggregate across every light block)
@@ -788,6 +832,11 @@ class RoomModuleCard extends HTMLElement {
       sub.textContent = parts.length ? parts.join(' · ') : 'Ambient';
     }
   }
+
+  _updateCustomCard(block, idx) {
+    const cardEl = this._nestedCards && this._nestedCards[idx];
+    if (cardEl) cardEl.hass = this._hass;
+  }
 }
 
 const STYLE = `
@@ -923,6 +972,11 @@ h1{font-family:'Space Grotesk', sans-serif, sans-serif;font-size:22px;font-weigh
 .tank-controls{display:flex;gap:8px;padding:0 16px 14px;}
 .tank-ctrl-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--surface-border);background:rgba(255,255,255,0.04);color:var(--text-mid);font-size:15px;cursor:pointer;}
 .tank-ctrl-btn.active{background:rgba(127,217,209,.18);border-color:rgba(127,217,209,.4);color:var(--accent-tank);}
+.custom-card-wrap{margin-bottom:10px;}
+.custom-card-empty{
+  background:var(--bg-surface);border:1px dashed var(--surface-border);border-radius:18px;
+  padding:16px;font-size:12.5px;color:var(--text-mid);text-align:center;
+}
 `;
 
 customElements.define('room-module-card', RoomModuleCard);
@@ -1060,6 +1114,7 @@ class RoomModuleCardEditor extends HTMLElement {
     `;
 
     this._mountPickers();
+    this._mountYamlEditors();
     this._bindEvents();
   }
 
@@ -1083,8 +1138,25 @@ class RoomModuleCardEditor extends HTMLElement {
       case 'fan': return this._fanBlockHtml(block, idx);
       case 'media': return this._mediaBlockHtml(block, idx);
       case 'tank': return this._tankBlockHtml(block, idx);
+      case 'custom_card': return this._customCardBlockHtml(block, idx);
       default: return '';
     }
+  }
+
+  _customCardBlockHtml(block, idx) {
+    return `
+      <div class="group block-group">
+        ${this._blockHeader('Custom Card', idx)}
+        <p class="hint-text">
+          Embed any other installed Lovelace card here — e.g. install
+          "Mediocre Media Player Card" via HACS first, then paste its
+          config below the same way you would in a dashboard's YAML editor.
+        </p>
+        <label>Card configuration
+          <div class="yaml-slot" data-slot="card-config-${idx}"></div>
+        </label>
+      </div>
+    `;
   }
 
   _climateBlockHtml(block, idx) {
@@ -1246,6 +1318,50 @@ class RoomModuleCardEditor extends HTMLElement {
     });
   }
 
+  // ---- mount ha-yaml-editor (or JSON textarea fallback) for custom_card blocks ----
+  _mountYamlEditors() {
+    const r = this.shadowRoot;
+    const c = this._config;
+    (c.blocks || []).forEach((block, idx) => {
+      if (block.type !== 'custom_card') return;
+      const slot = r.querySelector(`.yaml-slot[data-slot="card-config-${idx}"]`);
+      if (!slot) return;
+
+      const onChange = (newConfig) => {
+        this._config.blocks[idx].card_config = newConfig;
+        this._emitChange();
+      };
+
+      if (customElements.get('ha-yaml-editor')) {
+        const editor = document.createElement('ha-yaml-editor');
+        editor.hass = this._hass;
+        editor.defaultValue = block.card_config || {};
+        editor.addEventListener('value-changed', (e) => {
+          if (e.detail.isValid !== false) onChange(e.detail.value);
+        });
+        slot.appendChild(editor);
+      } else {
+        // Fallback: plain JSON textarea if ha-yaml-editor isn't available
+        const textarea = document.createElement('textarea');
+        textarea.className = 'json-fallback';
+        textarea.rows = 6;
+        textarea.value = JSON.stringify(block.card_config || {}, null, 2);
+        textarea.addEventListener('change', () => {
+          try {
+            onChange(JSON.parse(textarea.value));
+          } catch (err) {
+            // leave config unchanged if it doesn't parse; user is still typing
+          }
+        });
+        slot.appendChild(textarea);
+        const note = document.createElement('div');
+        note.className = 'hint-text';
+        note.textContent = 'YAML editor unavailable in this HA version — paste JSON here instead (quotes required around keys).';
+        slot.appendChild(note);
+      }
+    });
+  }
+
   // ---- events ----
   _bindEvents() {
     const r = this.shadowRoot;
@@ -1378,6 +1494,13 @@ input[type="text"], select{
   color: var(--primary-text-color, #1a1a1a);
 }
 ha-entity-picker{ width:100%; }
+ha-yaml-editor{ width:100%; display:block; }
+.json-fallback{
+  width:100%; font-family:monospace; font-size:12.5px;
+  border-radius:8px; border:1px solid rgba(0,0,0,0.15); padding:8px 10px;
+  background: var(--card-background-color, #fff); color: var(--primary-text-color, #1a1a1a);
+}
+.hint-text{ font-size:12px; color: var(--secondary-text-color, #6a6a6a); margin:-2px 0 10px; line-height:1.5; }
 .item-card{
   border:1px solid rgba(0,0,0,0.1);
   border-radius:10px;
