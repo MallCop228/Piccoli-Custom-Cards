@@ -1,6 +1,6 @@
 /* ============================================================
    room-module-card.js
-   Version: 1.1.0
+   Version: 1.2.0
 
    A modular room dashboard card, built Bubble-Card-style: one
    lightweight container ("room-module-card") plus a palette of
@@ -425,32 +425,33 @@ class RoomModuleCard extends HTMLElement {
     const showChips = sources.length > 1;
 
     wrap.innerHTML = `
-      <div class="card media-card">
-        <div class="media-now-playing">
-          <div class="media-art" id="mediaArt-${idx}">
-            <div class="media-art-fallback" id="mediaArtFallback-${idx}">${sources[0] ? mediaIconHtml(sources[0]) : ''}</div>
+      <div class="card media-card" id="mediaCard-${idx}">
+        <div class="media-scrim"></div>
+        <div class="media-fallback-icon" id="mediaFallbackIcon-${idx}">${sources[0] ? mediaIconHtml(sources[0]) : ''}</div>
+        <div class="media-content">
+          <div class="media-now-playing">
+            <div class="media-now-info">
+              <div class="media-source-name" id="mediaSourceName-${idx}">${sources[0] ? escapeHtml(sources[0].name) : ''}</div>
+              <div class="media-title" id="mediaTitle-${idx}">Nothing playing</div>
+              <div class="media-subtitle" id="mediaSubtitle-${idx}"></div>
+            </div>
+            <button class="mute-btn" id="mediaMute-${idx}" title="Mute">🔊</button>
           </div>
-          <div class="media-now-info">
-            <div class="media-source-name" id="mediaSourceName-${idx}">${sources[0] ? escapeHtml(sources[0].name) : ''}</div>
-            <div class="media-title" id="mediaTitle-${idx}">Nothing playing</div>
-            <div class="media-subtitle" id="mediaSubtitle-${idx}"></div>
+          <div class="volume-row">
+            <span class="vol-icon">🔈</span>
+            <input type="range" min="0" max="100" value="50" class="dim-slider vol-slider" id="mediaVolume-${idx}">
           </div>
-          <button class="mute-btn" id="mediaMute-${idx}" title="Mute">🔊</button>
-        </div>
-        <div class="volume-row">
-          <span class="vol-icon">🔈</span>
-          <input type="range" min="0" max="100" value="50" class="dim-slider vol-slider" id="mediaVolume-${idx}">
-        </div>
-        ${showChips ? `<div class="source-pick">${chips}</div>` : ''}
-        <div class="transport">
-          <button id="mediaPrev-${idx}">⏮</button>
-          <button class="play" id="mediaPlay-${idx}">▶</button>
-          <button id="mediaNext-${idx}">⏭</button>
-        </div>
-        <div class="group-row" id="groupRow-${idx}" style="display:none">
-          <div class="group-label">Group with</div>
-          <div class="group-chips">
-            ${sources.map((s, i) => `<div class="group-chip" data-idx="${i}" data-blockidx="${idx}" data-entity="${attr(s.entity)}">${escapeHtml(s.name)}</div>`).join('')}
+          ${showChips ? `<div class="source-pick">${chips}</div>` : ''}
+          <div class="transport">
+            <button id="mediaPrev-${idx}">⏮</button>
+            <button class="play" id="mediaPlay-${idx}">▶</button>
+            <button id="mediaNext-${idx}">⏭</button>
+          </div>
+          <div class="group-row" id="groupRow-${idx}" style="display:none">
+            <div class="group-label">Group with</div>
+            <div class="group-chips">
+              ${sources.map((s, i) => `<div class="group-chip" data-idx="${i}" data-blockidx="${idx}" data-entity="${attr(s.entity)}">${escapeHtml(s.name)}</div>`).join('')}
+            </div>
           </div>
         </div>
       </div>
@@ -467,7 +468,7 @@ class RoomModuleCard extends HTMLElement {
           chip.classList.add('active');
           const src = this._mediaSourcesByBlock[idx][this._activeSourceIdx[idx]];
           this.shadowRoot.getElementById(`mediaSourceName-${idx}`).textContent = src.name;
-          this.shadowRoot.getElementById(`mediaArtFallback-${idx}`).innerHTML = mediaIconHtml(src);
+          this.shadowRoot.getElementById(`mediaFallbackIcon-${idx}`).innerHTML = mediaIconHtml(src);
           this._updateDynamic();
         };
       });
@@ -743,8 +744,8 @@ class RoomModuleCard extends HTMLElement {
     const playBtn = root.getElementById(`mediaPlay-${idx}`);
     const muteBtn = root.getElementById(`mediaMute-${idx}`);
     const volSlider = root.getElementById(`mediaVolume-${idx}`);
-    const artEl = root.getElementById(`mediaArt-${idx}`);
-    const artFallback = root.getElementById(`mediaArtFallback-${idx}`);
+    const artCard = root.getElementById(`mediaCard-${idx}`);
+    const fallbackIcon = root.getElementById(`mediaFallbackIcon-${idx}`);
     const groupRow = root.getElementById(`groupRow-${idx}`);
 
     if (titleEl) {
@@ -766,18 +767,20 @@ class RoomModuleCard extends HTMLElement {
       volSlider.value = Math.round(st.attributes.volume_level * 100);
     }
 
-    // Artwork: show entity_picture when available, otherwise fall back to the icon
-    if (artEl) {
+    // Hero artwork: the whole card's background becomes the blurred album/show
+    // art when available (same "art as hero" idea as Mediocre Media Player
+    // Card), falling back to our own tinted glass surface + icon when idle.
+    if (artCard) {
       const picture = st && st.attributes.entity_picture;
       if (picture) {
         const url = this._hass && this._hass.hassUrl ? this._hass.hassUrl(picture) : picture;
-        artEl.style.backgroundImage = `url("${url}")`;
-        artEl.classList.add('has-art');
-        if (artFallback) artFallback.style.display = 'none';
+        artCard.style.backgroundImage = `url("${url}")`;
+        artCard.classList.add('has-art');
+        if (fallbackIcon) fallbackIcon.style.display = 'none';
       } else {
-        artEl.style.backgroundImage = '';
-        artEl.classList.remove('has-art');
-        if (artFallback) artFallback.style.display = '';
+        artCard.style.backgroundImage = '';
+        artCard.classList.remove('has-art');
+        if (fallbackIcon) fallbackIcon.style.display = '';
       }
     }
 
@@ -917,39 +920,53 @@ h1{font-family:'Space Grotesk', sans-serif, sans-serif;font-size:22px;font-weigh
 .speed-pills{display:flex;gap:6px;}
 .speed-pill{padding:6px 10px;border-radius:10px;font-size:11px;font-family:'JetBrains Mono', monospace;border:1px solid var(--surface-border);color:var(--text-mid);cursor:pointer;}
 .speed-pill.active{background:rgba(142,169,242,.18);border-color:rgba(142,169,242,.4);color:var(--accent-fan);}
-.media-card{flex-direction:column;align-items:stretch;padding:16px;}
-.media-now-playing{display:flex;align-items:center;gap:14px;}
-.media-art{
-  width:52px;height:52px;border-radius:12px;flex-shrink:0;
-  background-color:rgba(217,143,214,.16);
+.media-card{
+  position:relative;flex-direction:column;align-items:stretch;padding:0;overflow:hidden;
+  background-color:var(--bg-surface);
   background-size:cover;background-position:center;
-  display:flex;align-items:center;justify-content:center;
-  color:var(--accent-media);
-  transition:background-image .3s ease;
+  transition:background-image .4s ease;
+  border-color:rgba(217,143,214,.2);
+  min-height:150px;
 }
-.media-art ha-icon{--mdc-icon-size:24px;}
-.media-art.has-art .media-art-fallback{display:none;}
+.media-scrim{
+  position:absolute;inset:0;
+  background:linear-gradient(180deg, rgba(13,17,23,.35) 0%, rgba(13,17,23,.75) 55%, rgba(13,17,23,.94) 100%);
+  pointer-events:none;
+}
+.media-card:not(.has-art) .media-scrim{
+  background:linear-gradient(180deg, rgba(217,143,214,.10), rgba(13,17,23,.02));
+}
+.media-fallback-icon{
+  position:absolute;top:16px;left:16px;
+  width:40px;height:40px;border-radius:12px;
+  background:rgba(217,143,214,.16);color:var(--accent-media);
+  display:flex;align-items:center;justify-content:center;font-size:19px;
+}
+.media-fallback-icon ha-icon{--mdc-icon-size:20px;}
+.media-content{position:relative;padding:16px;padding-top:60px;}
+.media-card:not(.has-art) .media-content{padding-top:16px;}
+.media-now-playing{display:flex;align-items:flex-end;gap:14px;}
 .media-now-info{flex:1;min-width:0;}
-.media-source-name{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-low);margin-bottom:2px;}
-.media-title{font-size:14px;font-weight:500;color:var(--text-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.media-subtitle{font-size:12px;color:var(--text-mid);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.mute-btn{background:none;border:none;font-size:17px;cursor:pointer;flex-shrink:0;color:var(--text-mid);padding:6px;}
-.volume-row{display:flex;align-items:center;gap:8px;padding:12px 0 12px;}
-.volume-row .vol-icon{font-size:13px;color:var(--text-mid);flex-shrink:0;}
+.media-source-name{font-family:'JetBrains Mono', monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,241,240,.6);margin-bottom:4px;}
+.media-title{font-family:'Space Grotesk', sans-serif;font-size:17px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 6px rgba(0,0,0,.4);}
+.media-subtitle{font-size:12.5px;color:rgba(238,241,240,.75);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mute-btn{background:rgba(255,255,255,0.08);border:none;border-radius:10px;font-size:16px;cursor:pointer;flex-shrink:0;color:#fff;padding:8px;}
+.volume-row{display:flex;align-items:center;gap:8px;padding:14px 0 4px;}
+.volume-row .vol-icon{font-size:13px;color:rgba(238,241,240,.6);flex-shrink:0;}
 .vol-slider{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:rgba(255,255,255,0.12);outline:none;}
 .vol-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent-media);cursor:pointer;border:2px solid rgba(0,0,0,.3);}
 .vol-slider::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent-media);cursor:pointer;border:none;}
 .source-pick{display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;}
-.source-chip{display:flex;align-items:center;gap:5px;font-size:11px;padding:6px 11px;border-radius:20px;border:1px solid var(--surface-border);color:var(--text-mid);cursor:pointer;}
-.source-chip.active{background:rgba(217,143,214,.16);border-color:rgba(217,143,214,.4);color:var(--accent-media);}
+.source-chip{display:flex;align-items:center;gap:5px;font-size:11px;padding:6px 11px;border-radius:20px;border:1px solid rgba(255,255,255,.14);color:rgba(238,241,240,.85);cursor:pointer;background:rgba(0,0,0,.15);}
+.source-chip.active{background:rgba(217,143,214,.28);border-color:rgba(217,143,214,.55);color:#fff;}
 .transport{display:flex;gap:16px;justify-content:center;margin-top:14px;}
-.transport button{background:none;border:none;color:var(--text-mid);font-size:17px;cursor:pointer;}
-.transport button.play{width:38px;height:38px;border-radius:50%;background:rgba(217,143,214,.16);color:var(--accent-media);display:flex;align-items:center;justify-content:center;}
-.group-row{margin-top:14px;padding-top:12px;border-top:1px solid var(--surface-border);}
-.group-label{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-low);margin-bottom:8px;}
+.transport button{background:none;border:none;color:rgba(238,241,240,.8);font-size:17px;cursor:pointer;}
+.transport button.play{width:38px;height:38px;border-radius:50%;background:rgba(217,143,214,.28);color:#fff;display:flex;align-items:center;justify-content:center;}
+.group-row{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);}
+.group-label{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,241,240,.55);margin-bottom:8px;}
 .group-chips{display:flex;gap:6px;flex-wrap:wrap;}
-.group-chip{font-size:11px;padding:6px 11px;border-radius:20px;border:1px solid var(--surface-border);color:var(--text-mid);cursor:pointer;}
-.group-chip.active{background:rgba(217,143,214,.16);border-color:rgba(217,143,214,.4);color:var(--accent-media);}
+.group-chip{font-size:11px;padding:6px 11px;border-radius:20px;border:1px solid rgba(255,255,255,.14);color:rgba(238,241,240,.85);cursor:pointer;background:rgba(0,0,0,.15);}
+.group-chip.active{background:rgba(217,143,214,.28);border-color:rgba(217,143,214,.55);color:#fff;}
 .tank-card{position:relative;flex-direction:column;align-items:stretch;padding:0;overflow:hidden;border-color:rgba(127,217,209,.25);}
 .tank-visual{position:relative;height:120px;overflow:hidden;transition:background 1.2s ease;}
 .tank-visual.tank-lit{background:linear-gradient(180deg, rgba(127,217,209,.30), rgba(30,45,48,.4));}
